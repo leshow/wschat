@@ -43,14 +43,14 @@ removeClient :: Client -> ServerState -> ServerState
 removeClient client = filter ((/= fst client) . fst)
 
 broadcast :: UC.InChan Text -> Text -> ServerState -> IO ()
-broadcast bcast msg clients = do
+broadcast logChan msg clients = do
     -- T.putStrLn msg
-    UC.writeChan bcast msg
+    UC.writeChan logChan msg
     forM_ clients $ \(_name, conn) -> WS.sendTextData conn msg
 
 -- WS.ServerApp is an alias for PendingConnection -> IO ()
 application :: UC.InChan Text -> MVar ServerState -> WS.ServerApp
-application bcast state pending = do
+application logChan state pending = do
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
     msg     <- WS.receiveData conn
@@ -73,10 +73,10 @@ application bcast state pending = do
                     let s' = addClient client s
                     WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
                         ", "
-                        (map fst s)
-                    broadcast bcast (fst client <> " joined") s'
+                        (fmap fst s)
+                    broadcast logChan (fst client <> " joined") s'
                     pure s'
-                talk bcast client state
+                talk logChan client state
   where
     prefix = "connect "
     isFormatted client =
@@ -85,24 +85,24 @@ application bcast state pending = do
         s <- modifyMVar state $ \s -> do
             let s' = removeClient client s
             pure (s', s')
-        broadcast bcast (fst client <> " disconnected") s
+        broadcast logChan (fst client <> " disconnected") s
 
 talk :: UC.InChan Text -> Client -> MVar ServerState -> IO ()
-talk bcast (user, conn) state = forever $ do
+talk logChan (user, conn) state = forever $ do
     msg <- WS.receiveData conn
     s   <- readMVar state
-    broadcast bcast (user <> ": " <> msg) s
+    broadcast logChan (user <> ": " <> msg) s
 
 main :: IO ()
 main = do
-    state              <- newMVar newServerState
-    (bcast, printChan) <- UC.newChan
-    _                  <- async $ forever $ do
-        msg <- UC.readChan printChan
-        T.putStrLn msg
+    state         <- newMVar newServerState
+    (logChan, rx) <- UC.newChan -- chan for logging
+    _             <- async $ forever $ do
+        msg <- UC.readChan rx
+        T.putStrLn $ "log: " <> msg
     run
         3000
         (WaiWS.websocketsOr WS.defaultConnectionOptions
-                            (application bcast state)
+                            (application logChan state)
                             undefined
         )
