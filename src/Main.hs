@@ -56,27 +56,26 @@ application logChan state pending = do
     msg     <- WS.receiveData conn
     clients <- readMVar state
     let client = (T.drop (T.length prefix) msg, conn)
-    case msg of
-        _
-            | not (T.isPrefixOf prefix msg) -> WS.sendTextData
-                conn
-                ("Wrong announcment message." :: Text)
-            | isFormatted client -> WS.sendTextData
-                conn
-                ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
-                )
-            | clientExists client clients -> WS.sendTextData
-                conn
-                ("User already exists" :: Text)
-            | otherwise -> flip finally (disconnect client) $ do
-                modifyMVar_ state $ \s -> do
-                    let s' = addClient client s
-                    WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
-                        ", "
-                        (fmap fst s)
-                    broadcast logChan (fst client <> " joined") s'
-                    pure s'
-                talk logChan client state
+    if
+        | not (T.isPrefixOf prefix msg) -> WS.sendTextData
+            conn
+            ("Wrong announcment message." :: Text)
+        | isFormatted client -> WS.sendTextData
+            conn
+            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
+            )
+        | clientExists client clients -> WS.sendTextData
+            conn
+            ("User already exists" :: Text)
+        | otherwise -> flip finally (disconnect client) $ do
+            modifyMVar_ state $ \s -> do
+                let s' = addClient client s
+                WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
+                    ", "
+                    (fmap fst s)
+                broadcast logChan (fst client <> " joined") s'
+                pure s'
+            talk logChan client state
   where
     prefix = "connect "
     isFormatted client =
