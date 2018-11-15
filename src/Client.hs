@@ -1,14 +1,14 @@
 module Client where
 
-import           Control.Concurrent.Async       ( async )
-import           Control.Monad                  ( forever
-                                                , unless
-                                                )
-import           Control.Monad.Trans            ( liftIO )
-import           Data.Text                      ( Text )
-import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as T
-import qualified Network.WebSockets            as WS
+import           Control.Concurrent.Async            ( async )
+import           Control.Monad                       ( forever
+                                                     , unless
+                                                     )
+import           Control.Monad.Trans                 ( liftIO )
+import           Data.Text                           ( Text )
+import qualified Data.Text                          as T
+import qualified Data.Text.IO                       as T
+import qualified Network.WebSockets                 as WS
 
 app :: WS.ClientApp ()
 app conn = do
