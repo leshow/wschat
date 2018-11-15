@@ -61,7 +61,8 @@ application logChan state pending = do
             ("Wrong announcment message." :: Text)
         | isFormatted client -> WS.sendTextData
             conn
-            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text)
+            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
+            )
         | clientExists client clients -> WS.sendTextData
             conn
             ("User already exists" :: Text)
@@ -75,7 +76,8 @@ application logChan state pending = do
                 pure s'
             talk logChan client state
   where
-    isFormatted client = any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
+    isFormatted client =
+        any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
     disconnect client = do
         s <- modifyMVar state $ \s -> do
             let s' = removeClient client s
