@@ -1,30 +1,29 @@
 module Main where
 
-import           Data.Char                      ( isPunctuation
-                                                , isSpace
-                                                )
-import           Data.Maybe                     ( fromJust
-                                                , isJust
-                                                )
-import           Data.Text                      ( Text )
-import qualified Data.Text                     as T
-import qualified Data.Text.IO                  as T
-import           Control.Exception              ( finally )
-import           Control.Monad                  ( forM_
-                                                , forever
-                                                )
-import           Control.Concurrent             ( MVar
-                                                , newMVar
-                                                , modifyMVar_
-                                                , modifyMVar
-                                                , readMVar
-                                                )
-import           Control.Concurrent.Async       ( async )
-import qualified Control.Concurrent.Chan.Unagi as UC
-import qualified Network.WebSockets            as WS
-import           Network.Wai.Handler.Warp       ( run )
-import qualified Network.Wai.Handler.WebSockets
-                                               as WaiWS
+import           Data.Char                           ( isPunctuation
+                                                     , isSpace
+                                                     )
+import           Data.Maybe                          ( fromJust
+                                                     , isJust
+                                                     )
+import           Data.Text                           ( Text )
+import qualified Data.Text                          as T
+import qualified Data.Text.IO                       as T
+import           Control.Exception                   ( finally )
+import           Control.Monad                       ( forM_
+                                                     , forever
+                                                     )
+import           Control.Concurrent                  ( MVar
+                                                     , newMVar
+                                                     , modifyMVar_
+                                                     , modifyMVar
+                                                     , readMVar
+                                                     )
+import           Control.Concurrent.Async            ( async )
+import qualified Control.Concurrent.Chan.Unagi      as UC
+import qualified Network.WebSockets                 as WS
+import           Network.Wai.Handler.Warp            ( run )
+import qualified Network.Wai.Handler.WebSockets     as WaiWS
 
 type Client = (Text, WS.Connection)
 
@@ -62,8 +61,7 @@ application logChan state pending = do
             ("Wrong announcment message." :: Text)
         | isFormatted client -> WS.sendTextData
             conn
-            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
-            )
+            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text)
         | clientExists client clients -> WS.sendTextData
             conn
             ("User already exists" :: Text)
@@ -77,8 +75,7 @@ application logChan state pending = do
                 pure s'
             talk logChan client state
   where
-    isFormatted client =
-        any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
+    isFormatted client = any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
     disconnect client = do
         s <- modifyMVar state $ \s -> do
             let s' = removeClient client s
@@ -110,3 +107,6 @@ main = do
                             (application logChan state)
                             undefined
         )
+
+foo = [1, 2, 3, 4, 5, 6, 8, 9]
+
