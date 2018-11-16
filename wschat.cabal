@@ -26,6 +26,7 @@ executable wschat
                      , wai-websockets
                      , async
                      , vector
+                     , random
   ghc-options:         -O2 -threaded "-with-rtsopts=-N" -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   default-extensions:          DeriveFoldable
                              , DeriveFunctor

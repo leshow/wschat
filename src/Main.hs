@@ -24,9 +24,9 @@ import qualified Control.Concurrent.Chan.Unagi      as UC
 import qualified Network.WebSockets                 as WS
 import           Network.Wai.Handler.Warp            ( run )
 import qualified Network.Wai.Handler.WebSockets     as WaiWS
+-- import           ChatState
 
 type Client = (Text, WS.Connection)
-
 type ServerState = [Client]
 
 newServerState :: ServerState
@@ -109,6 +109,4 @@ main = do
                             (application logChan state)
                             undefined
         )
-
-foo = [1, 2, 3, 4, 5, 6, 8, 9]
 
