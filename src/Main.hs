@@ -3,9 +3,7 @@ module Main where
 import           Data.Char                           ( isPunctuation
                                                      , isSpace
                                                      )
-import           Data.Maybe                          ( fromJust
-                                                     , isJust
-                                                     )
+import           Data.Maybe                          ( fromJust )
 import           Data.Text                           ( Text )
 import qualified Data.Text                          as T
 import qualified Data.Text.IO                       as T
@@ -24,28 +22,7 @@ import qualified Control.Concurrent.Chan.Unagi      as UC
 import qualified Network.WebSockets                 as WS
 import           Network.Wai.Handler.Warp            ( run )
 import qualified Network.Wai.Handler.WebSockets     as WaiWS
--- import           ChatState
-
-type Client = (Text, WS.Connection)
-type ServerState = [Client]
-
-newServerState :: ServerState
-newServerState = []
-
-numClients :: ServerState -> Int
-numClients = length
-
-clientExists :: Client -> ServerState -> Bool
-clientExists client = any ((== fst client) . fst)
-
-addClient :: Client -> ServerState -> ServerState
-addClient = (:)
-
-removeClient :: Client -> ServerState -> ServerState
-removeClient client = filter ((/= fst client) . fst)
-
-connect :: Text
-connect = "connect "
+import           ChatState
 
 -- WS.ServerApp is an alias for PendingConnection -> IO ()
 application :: UC.InChan Text -> MVar ServerState -> WS.ServerApp
@@ -54,55 +31,65 @@ application logChan state pending = do
     WS.forkPingThread conn 30
     msg     <- WS.receiveData conn
     clients <- readMVar state
-    let client = (T.drop (T.length connect) msg, conn)
-    if
-        | not (T.isPrefixOf connect msg) -> WS.sendTextData
-            conn
-            ("Wrong announcment message." :: Text)
-        | isFormatted client -> WS.sendTextData
-            conn
-            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
-            )
-        | clientExists client clients -> WS.sendTextData
-            conn
-            ("User already exists" :: Text)
-        | otherwise -> flip finally (disconnect client) $ do
-            modifyMVar_ state $ \s -> do
-                let s' = addClient client s
-                WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
-                    ", "
-                    (fmap fst s)
-                broadcast logChan (fst client <> " joined") s'
-                pure s'
-            talk logChan client state
+    case T.split (== ' ') msg of
+        ["/join", room, user] ->
+            let client = (user, conn)
+            in
+                if
+                    | clientExists client room clients -> WS.sendTextData
+                        conn
+                        ("User already exists" :: Text)
+                    | isFormatted client -> WS.sendTextData
+                        conn
+                        ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
+                        )
+                    | otherwise -> flip finally (disconnect client room) $ do
+                        modifyMVar_ state $ \s -> pure $ joinRoom client room s
+                        s <- readMVar state
+                        WS.sendTextData conn
+                            $  "Welcome! users: "
+                            <> T.intercalate
+                                   ", "
+                                   (fromJust $ getUsernames room s)
+                        broadcast logChan (fst client <> " joined") room s
+                        talk logChan client room state
+        ["/list", room] -> do
+            s <- readMVar state
+            WS.sendTextData
+                conn
+                ("Users: "
+                    <> T.intercalate ", " (fromJust $ getUsernames room s) :: Text
+                )
+        _ -> WS.sendTextData conn ("Wrong announcement message." :: Text)
   where
     isFormatted client =
         any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
-    disconnect client = do
+    disconnect client room = do
         s <- modifyMVar state $ \s -> do
-            let s' = removeClient client s
+            let s' = removeClient client room s
             pure (s', s')
-        broadcast logChan (fst client <> " disconnected") s
+        broadcast logChan (fst client <> " disconnected") room s
 
-talk :: UC.InChan Text -> Client -> MVar ServerState -> IO ()
-talk logChan (user, conn) state = forever $ do
+talk :: UC.InChan Text -> Client -> RoomName -> MVar ServerState -> IO ()
+talk logChan (user, conn) room state = forever $ do
     msg <- WS.receiveData conn
     s   <- readMVar state
-    broadcast logChan (user <> ": " <> msg) s
+    broadcast logChan (user <> ": " <> msg) room s
 
-broadcast :: UC.InChan Text -> Text -> ServerState -> IO ()
-broadcast logChan msg clients = do
+broadcast :: UC.InChan Text -> Text -> RoomName -> ServerState -> IO ()
+broadcast logChan msg room state = do
     -- T.putStrLn msg
-    UC.writeChan logChan msg
-    forM_ clients $ \(_name, conn) -> WS.sendTextData conn msg
+    let clients = getClients room state
+    -- UC.writeChan logChan msg
+    T.putStrLn msg
+    case clients of
+        Just members ->
+            forM_ members $ \(_name, conn) -> WS.sendTextData conn msg
+        Nothing -> pure ()
 
 main :: IO ()
 main = do
     state         <- newMVar newServerState
-    -- (stateIn, stateOut) <- UC.newChan
-    -- _ <- async $ forever $ do
-    --     action <- UC.readChan stateOut
-    --     runAction action state
     (logChan, rx) <- UC.newChan -- chan for logging
     _             <- async $ forever $ do
         msg <- UC.readChan rx
@@ -113,4 +100,3 @@ main = do
                             (application logChan state)
                             undefined
         )
-

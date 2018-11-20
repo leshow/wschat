@@ -47,7 +47,7 @@ joinRoom :: Client -> RoomName -> ServerState -> ServerState
 joinRoom client room state = case Map.lookup room (rooms state) of
     Just clients ->
         state { rooms = Map.insert room (client : clients) (rooms state) }
-    Nothing -> state
+    Nothing -> state { rooms = Map.insert room [client] (rooms state) }
 
 removeClient :: Client -> RoomName -> ServerState -> ServerState
 removeClient client room state = case Map.lookup room (rooms state) of
@@ -57,6 +57,12 @@ removeClient client room state = case Map.lookup room (rooms state) of
                              (rooms state)
         }
     Nothing -> state
+
+getClients :: RoomName -> ServerState -> Maybe [Client]
+getClients room state = Map.lookup room (rooms state)
+
+getUsernames :: RoomName -> ServerState -> Maybe [Text]
+getUsernames room state = fmap fst <$> getClients room state
 
 getInt :: IO Int
 getInt = getStdRandom (randomR (0, maxBound :: Int))
