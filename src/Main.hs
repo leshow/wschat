@@ -99,6 +99,10 @@ broadcast logChan msg clients = do
 main :: IO ()
 main = do
     state         <- newMVar newServerState
+    -- (stateIn, stateOut) <- UC.newChan
+    -- _ <- async $ forever $ do
+    --     action <- UC.readChan stateOut
+    --     runAction action state
     (logChan, rx) <- UC.newChan -- chan for logging
     _             <- async $ forever $ do
         msg <- UC.readChan rx

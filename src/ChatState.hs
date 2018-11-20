@@ -24,16 +24,12 @@ data ServerState = ServerState
     , history :: History
     }
 
--- room user conn
-type JoinRoom = (RoomName, Text, WS.Connection)
--- room user
-type LeaveRoom = (RoomName, Text)
---
-type ListRooms = ()
--- roomname sendingUser msg
-type SendMessage = (RoomName, Text, Text)
--- roomname
-type GetHistory = (RoomName)
+data StateAction
+    = JoinRoom (RoomName, Client)
+    | LeaveRoom (RoomName, Text)
+    | ListRooms
+    | SendMessage (RoomName, Text, Text)
+    | GetHistory RoomName
 
 newServerState :: ServerState
 newServerState = ServerState { rooms = Map.empty, history = Map.empty }
@@ -47,8 +43,8 @@ clientExists client room state = case Map.lookup room (rooms state) of
     Just clients -> any ((== fst client) . fst) clients
     Nothing      -> False
 
-addClient :: Client -> RoomName -> ServerState -> ServerState
-addClient client room state = case Map.lookup room (rooms state) of
+joinRoom :: Client -> RoomName -> ServerState -> ServerState
+joinRoom client room state = case Map.lookup room (rooms state) of
     Just clients ->
         state { rooms = Map.insert room (client : clients) (rooms state) }
     Nothing -> state
@@ -61,7 +57,6 @@ removeClient client room state = case Map.lookup room (rooms state) of
                              (rooms state)
         }
     Nothing -> state
--- joinRoom :: ServerState -> JoinRoom -> ServerState
 
 getInt :: IO Int
 getInt = getStdRandom (randomR (0, maxBound :: Int))
