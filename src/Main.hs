@@ -29,31 +29,10 @@ application :: UC.InChan Text -> MVar ServerState -> WS.ServerApp
 application logChan state pending = do
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
-    msg     <- WS.receiveData conn
-    clients <- readMVar state
+    msg <- WS.receiveData conn
     case T.split (== ' ') msg of
-        ["/join", room, user] ->
-            let client = (user, conn)
-            in
-                if
-                    | clientExists client room clients -> WS.sendTextData
-                        conn
-                        ("User already exists" :: Text)
-                    | isFormatted client -> WS.sendTextData
-                        conn
-                        ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
-                        )
-                    | otherwise -> flip finally (disconnect client room) $ do
-                        modifyMVar_ state $ \s -> pure $ joinRoom client room s
-                        s <- readMVar state
-                        WS.sendTextData conn
-                            $  "Welcome! users: "
-                            <> T.intercalate
-                                   ", "
-                                   (fromJust $ getUsernames room s)
-                        broadcast logChan (fst client <> " joined") room s
-                        talk logChan client room state
-        ["/list", room] -> do
+        ["/join", room, user] -> handle user conn room logChan state
+        ["/list", room]       -> do
             s <- readMVar state
             WS.sendTextData
                 conn
@@ -61,20 +40,58 @@ application logChan state pending = do
                     <> T.intercalate ", " (fromJust $ getUsernames room s) :: Text
                 )
         _ -> WS.sendTextData conn ("Wrong announcement message." :: Text)
+
+
+handle
+    :: Text
+    -> WS.Connection
+    -> RoomName
+    -> UC.InChan Text
+    -> MVar ServerState
+    -> IO ()
+handle user conn room log clients = do
+    state <- readMVar clients
+    if
+        | clientExists client room state -> WS.sendTextData
+            conn
+            ("User already exists" :: Text)
+        | isFormatted -> WS.sendTextData
+            conn
+            ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
+            )
+        | otherwise -> flip finally disconnect $ do
+            modifyMVar_ clients $ \s -> pure $ joinRoom client room s
+            s <- readMVar clients
+            WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
+                ", "
+                (fromJust $ getUsernames room s)
+            broadcast log (fst client <> " joined " <> room) room s
+            talk log client room clients
   where
-    isFormatted client =
+    client = (user, conn)
+    isFormatted =
         any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
-    disconnect client room = do
-        s <- modifyMVar state $ \s -> do
+    disconnect = do
+        s <- modifyMVar clients $ \s -> do
             let s' = removeClient client room s
             pure (s', s')
-        broadcast logChan (fst client <> " disconnected") room s
+        broadcast log (fst client <> " disconnected") room s
 
 talk :: UC.InChan Text -> Client -> RoomName -> MVar ServerState -> IO ()
 talk logChan (user, conn) room state = forever $ do
     msg <- WS.receiveData conn
-    s   <- readMVar state
-    broadcast logChan (user <> ": " <> msg) room s
+    case T.split (== ' ') msg of
+        ["/join", newroom] -> quit >> handle user conn newroom logChan state
+        ["/leave"]         -> quit
+        _                  -> do
+            s <- readMVar state
+            broadcast logChan (user <> ": " <> msg) room s
+  where
+    quit = do
+        s <- modifyMVar state $ \s -> do
+            let s' = removeClient (user, conn) room s
+            pure (s', s')
+        broadcast logChan (user <> " left room " <> room) room s
 
 broadcast :: UC.InChan Text -> Text -> RoomName -> ServerState -> IO ()
 broadcast logChan msg room state = do
