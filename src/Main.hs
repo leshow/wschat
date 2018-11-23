@@ -23,6 +23,8 @@ import qualified Control.Concurrent.Chan.Unagi      as UC
 import qualified Network.WebSockets                 as WS
 import           Network.Wai.Handler.Warp            ( run )
 import qualified Network.Wai.Handler.WebSockets     as WaiWS
+import qualified Network.Wai                        as Wai
+import qualified Network.HTTP.Types                 as Http
 import           ChatState
 
 -- WS.ServerApp is an alias for PendingConnection -> IO ()
@@ -31,8 +33,10 @@ application state pending = do
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
     msg <- WS.receiveData conn
+    num <- getInt
     case T.split (== ' ') msg of
-        ["/join", room, user] -> handle user conn room state
+        ["/join", room, user] -> handle (userN num user conn) room state
+        ["/join"]             -> handle (userI num conn) "Main" state
         ["/list", room]       -> do
             s <- readTVarIO state
             WS.sendTextData
@@ -43,14 +47,14 @@ application state pending = do
         _ -> WS.sendTextData conn ("Wrong announcement message." :: Text)
 
 
-handle :: Text -> WS.Connection -> RoomName -> TVar ServerState -> IO ()
-handle user conn room clients = do
+handle :: Client -> RoomName -> TVar ServerState -> IO ()
+handle client@(_, name, conn) room clients = do
     state <- readTVarIO clients
     if
         | clientExists client room state -> WS.sendTextData
             conn
             ("User already exists" :: Text)
-        | isFormatted -> WS.sendTextData
+        | isFormatted name -> WS.sendTextData
             conn
             ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
             )
@@ -61,33 +65,34 @@ handle user conn room clients = do
             WS.sendTextData conn $ "Welcome! users: " <> T.intercalate
                 ", "
                 (fromJust $ getUsernames room s)
-            broadcast (fst client <> " joined " <> room) room s
+            broadcast (userHandle client <> " joined " <> room) room s
             talk client room clients
   where
-    client = (user, conn)
-    isFormatted =
-        any ($ fst client) [T.null, T.any isPunctuation, T.any isSpace]
+    isFormatted Nothing = False
+    isFormatted (Just n) =
+        any ($ n) [T.null, T.any isPunctuation, T.any isSpace]
     disconnect = do
         s <- atomically $ do
             modifyTVar' clients $ \s -> removeClient client room s
             readTVar clients
-        broadcast (fst client <> " disconnected") room s
+        broadcast (userHandle client <> " disconnected") room s
 
 talk :: Client -> RoomName -> TVar ServerState -> IO ()
-talk (user, conn) room state = forever $ do
+talk client@(n, _, conn) room state = forever $ do
     msg <- WS.receiveData conn
     case T.split (== ' ') msg of
-        ["/join", newroom] -> quit >> handle user conn newroom state
+        ["/join", newroom] -> quit >> handle client newroom state
+        ["/name", newname] -> quit >> handle (userN n newname conn) room state
         ["/leave"]         -> quit
         _                  -> do
             s <- readTVarIO state
-            broadcast (user <> ": " <> msg) room s
+            broadcast (userHandle client <> ": " <> msg) room s
   where
     quit = do
         s <- atomically $ do
-            modifyTVar' state $ \s -> removeClient (user, conn) room s
+            modifyTVar' state $ \s -> removeClient client room s
             readTVar state
-        broadcast (user <> " left room " <> room) room s
+        broadcast (userHandle client <> " left room " <> room) room s
 
 broadcast :: Text -> RoomName -> ServerState -> IO ()
 broadcast msg room state = do
@@ -95,7 +100,7 @@ broadcast msg room state = do
     T.putStrLn msg
     case clients of
         Just members ->
-            forM_ members $ \(_name, conn) -> WS.sendTextData conn msg
+            forM_ members $ \(_, _, conn) -> WS.sendTextData conn msg
         Nothing -> pure ()
 
 main :: IO ()
@@ -105,9 +110,10 @@ main = do
     -- _             <- async $ forever $ do
     --     msg <- UC.readChan rx
     --     T.putStrLn $ "log: " <> msg
-    run
-        3000
-        (WaiWS.websocketsOr WS.defaultConnectionOptions
-                            (application state)
-                            undefined
-        )
+    run 3000 $ WaiWS.websocketsOr WS.defaultConnectionOptions
+                                  (application state)
+                                  httpApp
+
+httpApp :: Wai.Application
+httpApp _ respond =
+    respond $ Wai.responseLBS Http.status400 [] "Not a websocket request"

@@ -18,16 +18,18 @@ executable wschat
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , websockets
-                     , text
-                     , containers
-                     , mtl
                      , network
-                     , unagi-chan
                      , warp
+                     , wai
                      , wai-websockets
+                     , http-types
                      , async
                      , vector
+                     , containers
+                     , text
+                     , mtl                     
                      , random
+                     , unagi-chan
                      , stm
   ghc-options:         -O2 -threaded "-with-rtsopts=-N" -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   default-extensions:          DeriveFoldable
