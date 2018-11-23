@@ -58,7 +58,7 @@ handle client@(_, name, conn) room clients = do
             conn
             ("Name cannot contain punctuation or whitespace and can't be empty" :: Text
             )
-        | otherwise -> flip finally disconnect $ do
+        | otherwise -> flip finally leave $ do
             s <- atomically $ do
                 modifyTVar' clients $ \s -> joinRoom client room s
                 readTVar clients
@@ -68,14 +68,12 @@ handle client@(_, name, conn) room clients = do
             broadcast (userHandle client <> " joined " <> room) room s
             talk client room clients
   where
+    isFormatted :: Maybe Text -> Bool
     isFormatted Nothing = False
     isFormatted (Just n) =
         any ($ n) [T.null, T.any isPunctuation, T.any isSpace]
-    disconnect = do
-        s <- atomically $ do
-            modifyTVar' clients $ \s -> removeClient client room s
-            readTVar clients
-        broadcast (userHandle client <> " disconnected") room s
+    leave :: IO ()
+    leave = disconnect client room " disconnected" clients
 
 talk :: Client -> RoomName -> TVar ServerState -> IO ()
 talk client@(n, _, conn) room state = forever $ do
@@ -88,11 +86,8 @@ talk client@(n, _, conn) room state = forever $ do
             s <- readTVarIO state
             broadcast (userHandle client <> ": " <> msg) room s
   where
-    quit = do
-        s <- atomically $ do
-            modifyTVar' state $ \s -> removeClient client room s
-            readTVar state
-        broadcast (userHandle client <> " left room " <> room) room s
+    quit :: IO ()
+    quit = disconnect client room (" left room " <> room) state
 
 broadcast :: Text -> RoomName -> ServerState -> IO ()
 broadcast msg room state = do
@@ -102,6 +97,13 @@ broadcast msg room state = do
         Just members ->
             forM_ members $ \(_, _, conn) -> WS.sendTextData conn msg
         Nothing -> pure ()
+
+disconnect :: Client -> RoomName -> Text -> TVar ServerState -> IO ()
+disconnect client room msg state = do
+    s <- atomically $ do
+        modifyTVar' state $ \s -> removeClient client room s
+        readTVar state
+    broadcast (userHandle client <> msg) room s
 
 main :: IO ()
 main = do
