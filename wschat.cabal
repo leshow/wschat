@@ -28,6 +28,7 @@ executable wschat
                      , async
                      , vector
                      , random
+                     , stm
   ghc-options:         -O2 -threaded "-with-rtsopts=-N" -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   default-extensions:          DeriveFoldable
                              , DeriveFunctor
